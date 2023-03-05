@@ -1,0 +1,13 @@
+﻿@inherits LayoutComponentBase
+@using BAP.WebCore.Components;
+@using MudBlazor
+
+<BapMudProviders />
+<MudLayout>
+    <TopAndSideNav />
+    <MudMainContent>
+        <MudPaper Width="100%" style="margin:10px">
+            @Body
+        </MudPaper>
+    </MudMainContent>
+</MudLayout>
