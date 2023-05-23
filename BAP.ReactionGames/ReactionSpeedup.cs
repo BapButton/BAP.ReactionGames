@@ -114,11 +114,7 @@ namespace BAP.ReactionGames
                         MsgSender.SendImage(nextNodeId, GenerateNextButton());
                     }
                 }
-
             }
-
-
-
         }
 
         public async Task<bool> EndSpeedupGame(string message, bool isFailure = false)

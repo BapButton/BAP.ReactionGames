@@ -1,0 +1,41 @@
+﻿@inherits GamePage
+@using BAP.UIHelpers.Components
+
+@if (game.IsGameRunning)
+{
+	<MudButton @onclick="() => EndGame()">
+		End Game
+	</MudButton>
+
+}
+else
+{
+	<MudGrid>
+		<MudItem xs="12" sm="6" md="3">
+			<MudButton @onclick="() => StartGame()">Start Game</MudButton>
+		</MudItem>
+		<MudItem xs="12" sm="6" md="3">
+			<MudButton @onclick="() => ShowHighScores()">High Scores</MudButton>
+		</MudItem>
+
+	</MudGrid>
+}
+
+@if (game.GameLength.TotalSeconds > 0)
+{
+	string description = game.IsGameRunning ? "" : "Time Completed";
+	<MudGrid>
+		<MudItem xs="12" lg="6">
+			<BigScore ScoreText="@game.correctScore.ToString()" ScoreDescriptionLineOne="How many presses" ScoreDescriptionLineTwo="Lets Get to 100" />
+		</MudItem>
+		<MudItem xs="12" lg="6">
+			<CountdownTimer Description="@description" TimeRemaining="@TimePlayed" />
+		</MudItem>
+	</MudGrid>
+
+}
+
+<MudGrid Style="height:250px">
+
+</MudGrid>
+
