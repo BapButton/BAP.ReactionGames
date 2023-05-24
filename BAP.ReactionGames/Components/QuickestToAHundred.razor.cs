@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace BAP.ReactionGames.Components
 {
-    [GamePage("Quickest to 100", "How quickly can you get to 100. The faster you click the better.", "2833fac2-7a69-4216-be2e-2c96f445cc0e")]
+    [GamePage("Speed to 100", "How quickly can you or your team get to 100.", "2833fac2-7a69-4216-be2e-2c96f445cc0e")]
     public partial class QuickestToAHundred : GamePage
     {
         [Inject]

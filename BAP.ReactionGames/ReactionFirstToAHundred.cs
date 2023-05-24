@@ -8,7 +8,11 @@ namespace BAP.ReactionGames
 	public class QuickestToAHundredGame : ReactionGameBase
 	{
 		internal override ILogger _logger { get; set; }
-		internal BapColor colorToUse { get; set; }
+		internal BapColor colorToUse()
+		{
+			return StandardColorPalettes.Default[BapBasicGameHelper.GetRandomInt(0, StandardColorPalettes.Default.Count - 1)];
+		}
+
 		//I think I have thread safety issues here. 
 		HashSet<string> NodeIdsCurrentlyShowingSomething { get; set; } = new();
 		internal int IncorrectPress { get; set; }
@@ -49,7 +53,6 @@ namespace BAP.ReactionGames
 		public QuickestToAHundredGame(IGameDataSaver<QuickestToAHundredGame> dbSaver, ISubscriber<ButtonPressedMessage> buttonPressed, ILogger<ReactionGame> logger, IBapMessageSender messageSender) : base(buttonPressed, messageSender)
 		{
 			_logger = logger;
-			colorToUse = StandardColorPalettes.Default[1];
 			DbSaver = dbSaver;
 			ButtonTimer = new System.Timers.Timer(2000);
 			base.Initialize(minButtons: 3);
@@ -61,7 +64,7 @@ namespace BAP.ReactionGames
 			base.wrongScore = 0;
 			GameStartedAt = DateTime.Now;
 			GameEndedAt = DateTime.MaxValue;
-			
+
 			// Hook up the Elapsed event for the timer. 
 			ButtonTimer.Elapsed += TimeForNextButton;
 			ButtonTimer.AutoReset = true;
@@ -103,7 +106,7 @@ namespace BAP.ReactionGames
 
 		public async Task<bool> EndSpeedupGame(string message, bool isFailure = false)
 		{
-			
+
 			if (IsGameRunning)
 			{
 				IsGameRunning = false;
@@ -163,7 +166,7 @@ namespace BAP.ReactionGames
 			_logger.LogInformation(message);
 			gameTimer?.Dispose();
 			bool isHighScore = (await DbSaver.GetScoresWithNewScoreIfWarranted(GenerateScoreWithCurrentData())).Where(t => t.ScoreId == 0).Any(); ;
-			if (isHighScore)
+			if (isHighScore && isFailure == false)
 			{
 
 				MsgSender.SendImageToAllButtons(new ButtonImage(PatternHelper.GetBytesForPattern(Patterns.AllOneColor), new(0, 255, 0)));
@@ -201,7 +204,7 @@ namespace BAP.ReactionGames
 
 		public override ButtonImage GenerateNextButton()
 		{
-			return new ButtonImage(PatternHelper.GetBytesForPattern(Patterns.AllOneColor), colorToUse);
+			return new ButtonImage(PatternHelper.GetBytesForPattern(Patterns.AllOneColor), colorToUse());
 		}
 
 		public override void Dispose()
