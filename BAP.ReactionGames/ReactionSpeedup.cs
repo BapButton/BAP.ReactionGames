@@ -72,6 +72,8 @@ namespace BAP.ReactionGames
             base.Initialize(minButtons: 3);
         }
 
+
+
         public override async Task<bool> Start()
         {
             GameStartedAt = DateTime.Now;

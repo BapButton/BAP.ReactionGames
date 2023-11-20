@@ -30,13 +30,13 @@ namespace BAP.ReactionGames
         }
 
 
-        public override async Task<bool> Start(int secondsToRun)
+        public override async Task<bool> Start(int secondsToRun, bool runNextCommand = true)
         {
             string path = FilePathHelper.GetFullPath<ReactionGameME>("Emoji.png");
             SpriteParser spriteParser = new SpriteParser(path);
             customImage = spriteParser.GetSprite(4, 5, 24, 20, 16, 2, 9);
             await Task.Delay(100);
-            await base.Start(secondsToRun);
+            await base.Start(secondsToRun,runNextCommand);
             lastFaceNodeId = "";
             return true;
         }

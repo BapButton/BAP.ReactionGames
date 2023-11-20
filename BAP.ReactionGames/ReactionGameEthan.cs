@@ -6,15 +6,24 @@ using BAP.Types;
 using BAP.Helpers;
 using Microsoft.Extensions.Logging;
 using BAP.ReactionGames.Components;
+using System.Collections.Concurrent;
+using Microsoft.VisualBasic;
 
 namespace BAP.ReactionGames
 {
+    internal enum TypeOfButton
+    {
+        Off = 0,
+        Sword = 1,
+        FrownyFace = 2,
+        SmilyFace = 3,
+        Color = 4
+
+    }
 
     public class ReactionGameEthan : ReactionGameBase
     {
-        string lastFaceNodeId = "";
-        string lastSwordNodeId = "";
-        bool lastFaceWasAFrownyFace = false;
+        ConcurrentDictionary<string, (TypeOfButton typeOfButton, DateTime timeToClear)> currentButtonStatus = new();
         IGameProvider GameProvider;
         int swordGameCount = 0;
         ulong[] swordSprite = new ulong[64];
@@ -24,7 +33,10 @@ namespace BAP.ReactionGames
         private const string TooManyWrong = "SgLostTheEntireGame.mp3";
         private const string BeatTheBonusRound = "SqBeatTheBonusRound.mp3";
         private const string StartOfBonusRound = "SgStart.mp3";
+        DateTime lastSword = DateTime.MinValue;
         internal override ILogger _logger { get; set; }
+        CancellationTokenSource timerTokenSource = new();
+        PeriodicTimer timer = default!;
         private IServiceProvider Services { get; set; }
         private ISubscriber<InternalSimpleGameUpdates> InternalUpdatePipe { get; set; }
         IDisposable subscriptions = default!;
@@ -41,8 +53,8 @@ namespace BAP.ReactionGames
             _logger = logger;
             string path = FilePathHelper.GetFullPath<ReactionGameEthan>("Emoji.png");
             SpriteParser spriteParser = new SpriteParser(path);
-            swordSprite = spriteParser.GetSprite(4, 5, 24, 20, 16, 2, 9);
-            frownyFace = spriteParser.GetSprite(4, 5, 24, 20, 16, 6, 7);
+            frownyFace = spriteParser.GetSprite(4, 5, 24, 20, 16, 2, 9);
+            swordSprite = spriteParser.GetSprite(4, 5, 24, 20, 16, 6, 7);
         }
 
         public async Task UpdateScoreFromInternalMessage(InternalSimpleGameUpdates update)
@@ -52,62 +64,109 @@ namespace BAP.ReactionGames
             if (update.GameEnded)
             {
                 base.UnPauseGame();
+                lastSword = DateTime.Now;
                 bonusGame?.Dispose();
                 MsgSender.PlayAudio(FilePathHelper.GetFullPath<ReactionGameEthan>(BeatTheBonusRound));
+                InitializeCurrentButtons();
+                foreach (var button in buttons)
+                {
+                    MsgSender.SendImage(button, new ButtonImage());
+                }
                 await NextCommand();
             }
             MsgSender.SendUpdate("Internal Score Update");
         }
 
-        public override async Task<bool> Start(int secondsToRun)
+        private void InitializeCurrentButtons()
+        {
+            Console.WriteLine("Clearing the button status");
+            currentButtonStatus = new();
+            foreach (var button in buttons)
+            {
+                currentButtonStatus.TryAdd(button, (TypeOfButton.Off, DateTime.MaxValue));
+            }
+        }
+
+        public override async Task<bool> Start(int secondsToRun, bool runNextCommand = true)
         {
             bonusGame = GameProvider.ReturnGameWithoutEnabling<SwordBonusGame>();
             await Task.Delay(100);
             bonusGame.Dispose();
-            await base.Start(secondsToRun);
-            lastFaceNodeId = "";
+            lastSword = DateTime.MinValue;
+            await base.Start(secondsToRun, false);
+            InitializeCurrentButtons();
+            await NextCommand();
+            StartGameFrameTicker();
             return true;
+        }
+
+        private async Task StartGameFrameTicker()
+        {
+            if (timerTokenSource.IsCancellationRequested)
+            {
+                timerTokenSource = new();
+
+            }
+            timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+            var timerToken = timerTokenSource.Token;
+            while (await timer.WaitForNextTickAsync(timerToken))
+            {
+                DoWeNeedToClearSwordsOrSmileys();
+            };
+            _logger.LogError("The Timer Has Stopped");
+        }
+
+        private void DoWeNeedToClearSwordsOrSmileys()
+        {
+            for (int i = 0; i < currentButtonStatus.Count; i++)
+            {
+                string button = buttons[i];
+                if (currentButtonStatus[button].timeToClear <= DateTime.Now)
+                {
+                    Console.WriteLine($"Clearing {button} because the time has expired");
+                    currentButtonStatus[button] = (TypeOfButton.Off, DateTime.MaxValue);
+                    MsgSender.SendImage(button, new ButtonImage());
+
+                }
+            }
         }
 
 
         public async override Task<bool> NextCommand()
         {
-            await base.NextCommand();
+            //await base.NextCommand();
+            string nextNodeId = BapBasicGameHelper.GetRandomNodeId(buttons, "", 12);
+            Console.WriteLine($"Setting {nextNodeId} to color");
+            currentButtonStatus[nextNodeId] = (TypeOfButton.Color, DateTime.MaxValue);
+            MsgSender.SendImage(nextNodeId, GenerateNextButton());
             bool sendFace = ShouldWePerformARandomAction(3);
             bool shouldWeShowTheSword = ShouldWePerformARandomAction(10);
 
 
-            if (lastSwordNodeId == lastNodeId)
-            {
-                lastSwordNodeId = "";
-            }
-
-            if (lastFaceNodeId == lastNodeId)
-            {
-                lastFaceNodeId = "";
-            }
-            if (shouldWeShowTheSword && swordGameCount < 5)
+            if (shouldWeShowTheSword && lastSword.AddSeconds(8) <= DateTime.Now && swordGameCount < 5 && !currentButtonStatus.Where(t => t.Value.typeOfButton == TypeOfButton.Sword).Any())
             {
                 swordGameCount++;
-                string swordNodeId = GetRandomNodeId(buttons, lastNodeId, 0);
-                lastSwordNodeId = swordNodeId;
+                Console.WriteLine("Sword Game Count is " + swordGameCount);
+                string swordNodeId = GetRandomNodeId(buttons, nextNodeId, 0);
+                currentButtonStatus[swordNodeId] = (TypeOfButton.Sword, DateTime.Now.AddSeconds(1));
+                Console.WriteLine($"Setting {swordNodeId} to Sword");
                 MsgSender.SendImage(swordNodeId, new ButtonImage(swordSprite));
             }
-            if (sendFace)
+            else if (sendFace)
             {
                 bool sendFrownyFace = ShouldWePerformARandomAction(3);
-                string faceNodeId = GetRandomNodeId(buttons, lastNodeId, 0);
-                lastFaceNodeId = faceNodeId;
-
+                string faceNodeId = GetRandomNodeId(buttons, nextNodeId, 0);
+                Console.WriteLine($"Sentting {faceNodeId} to a face");
+                currentButtonStatus[faceNodeId] = sendFrownyFace ? (TypeOfButton.FrownyFace, DateTime.Now.AddSeconds(2)) : (TypeOfButton.SmilyFace, DateTime.Now.AddSeconds(5));
                 if (sendFrownyFace)
                 {
-                    lastFaceWasAFrownyFace = true;
+                    Console.WriteLine("Sending Frowny Face");
                     MsgSender.SendImage(faceNodeId, new ButtonImage(frownyFace));
 
                 }
                 else
                 {
-                    lastFaceWasAFrownyFace = false;
+                    Console.WriteLine("Sending Smily Face");
                     MsgSender.SendImage(faceNodeId, new ButtonImage(PatternHelper.GetBytesForPattern(Patterns.PlainSmilyFace), new BapColor(0, 255, 0)));
                 }
             }
@@ -139,45 +198,55 @@ namespace BAP.ReactionGames
         {
             if (!GamePaused)
             {
-                if (lastSwordNodeId == e.NodeId)
+                TypeOfButton currentTypeOfButton = currentButtonStatus[e.NodeId].typeOfButton;
+                Console.WriteLine("Current Type of Button is " + currentTypeOfButton);
+                Console.WriteLine($"Clearing {e.NodeId} because it was pressed");
+                currentButtonStatus[e.NodeId] = (TypeOfButton.Off, DateTime.MaxValue);
+                if (currentTypeOfButton == TypeOfButton.Sword)
                 {
-                    //This use to use TimeSinceLightTurnedOff
+
                     if (bonusGame != null)
                     {
                         bonusGame.Dispose();
                     }
-                    bonusGame = Services.GetRequiredService<SwordBonusGame>();
+                    bonusGame = GameProvider.ReturnGameWithoutEnabling<SwordBonusGame>();
                     PauseGame(true);
                     MsgSender.PlayAudio(FilePathHelper.GetFullPath<ReactionGameEthan>(StartOfBonusRound));
-                    await bonusGame.Start(20);
-
+                    await bonusGame.Start(10);
+                }
+                else if (currentTypeOfButton == TypeOfButton.FrownyFace)
+                {
+                    await EndGame("It was a frowny Face", true);
+                    MsgSender.PlayAudio(FilePathHelper.GetFullPath<ReactionGameEthan>(FrownyFaceSound));
+                    //This use to use TimeSinceLightTurnedOff
 
 
                 }
-                else if (lastFaceNodeId == e.NodeId)
+                else if (currentTypeOfButton == TypeOfButton.SmilyFace)
                 {
-                    //This use to use TimeSinceLightTurnedOff
-                    if (lastFaceWasAFrownyFace)
-                    {
-                        await EndGame("It was a frowny Face", true);
-                        MsgSender.PlayAudio(FilePathHelper.GetFullPath<ReactionGameEthan>(FrownyFaceSound));
-                    }
-                    else
-                    {
-                        //this increments the score by 3 total because rightbuttonpressed does one.;
-                        correctScore += 3;
-                        await RightButtonPressed(e.ButtonPress, false, false);
-                    }
-
+                    await RightButtonPressed(e.ButtonPress, false, true, 3);
+                }
+                else if (currentTypeOfButton == TypeOfButton.Color)
+                {
+                    await RightButtonPressed(e.ButtonPress, false, true);
+                    await NextCommand();
                 }
                 else
                 {
-                    await base.OnButtonPressed(e);
+                    await base.WrongButtonPressed(e.ButtonPress);
                 }
+
             }
 
         }
 
+
+        public override async Task<bool> EndGame(string message, bool isFailure = false)
+        {
+            timerTokenSource.Cancel();
+            bonusGame?.Dispose();
+            return await base.EndGame("Game Ended by User", isFailure);
+        }
 
         public override async Task<bool> WrongButtonPressed(ButtonPress bp, bool runNextCommand = false, bool updateScore = true, int amountToAdd = 1)
         {
@@ -195,7 +264,9 @@ namespace BAP.ReactionGames
 
         public override ButtonImage GenerateNextButton()
         {
-            return new ButtonImage(PatternHelper.GetBytesForPattern(Patterns.AllOneColor), new BapColor(GetRandomInt(0, 255), GetRandomInt(0, 255), GetRandomInt(0, 255)));
+            BapColor bapColor = StandardColorPalettes.Default[GetRandomInt(0, StandardColorPalettes.Default.Count - 1)];
+            
+            return new ButtonImage(PatternHelper.GetBytesForPattern(Patterns.AllOneColor), bapColor);
         }
     }
 

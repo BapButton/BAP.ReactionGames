@@ -63,7 +63,7 @@ namespace BAP.ReactionGames
 
         public abstract ButtonImage GenerateNextButton();
 
-        public async virtual Task<bool> Start(int secondsToRun)
+        public async virtual Task<bool> Start(int secondsToRun, bool runNextCommand = true)
         {
             if (IsGameRunning)
             {
@@ -93,8 +93,10 @@ namespace BAP.ReactionGames
                 return false;
             }
             MsgSender.SendImageToAllButtons(new ButtonImage());
-            await NextCommand();
-
+            if(runNextCommand)
+            {
+                await NextCommand();
+            }
             return true;
         }
 
@@ -189,7 +191,7 @@ namespace BAP.ReactionGames
         public async virtual void UnPauseGame()
         {
             GamePaused = false;
-            if (!gameTimer.Enabled)
+            if (gameTimer.Paused)
             {
                 gameTimer.Resume();
             }
